@@ -134,7 +134,7 @@ class Transform(object):
     def __call__(self,model):
         pars = {self.name: self.pars, "comp": model.pars}
         new_model = Model(pars) 
-        new_model.func = lambda times, freqs: self.function(model,times,freqs)
+        new_model.function = lambda times, freqs: self.function(model,times,freqs)
         return new_model
 
 
@@ -174,7 +174,6 @@ class ScatterTransform(Transform):
 
     def _kernel(self,freq,times):
     
-       t0 = self.pars["t0"]
        tau_0 = self.pars["tau0"]
        f0 = self.pars["f0"]
 
