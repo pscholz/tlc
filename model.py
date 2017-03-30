@@ -18,9 +18,10 @@ class Model(object):
     Notes
     -----
 
-    A model is mades up of Components and Operators. Components are modified,
-    usually (always?) by convolution, by Operators.
-    * Don't like the work operator, think of something better
+    A Model is mades up of Components. Components have only functional form
+    in one dimension.
+
+    Models are modified by Transforms.
     """ 
 
     def __init__(self,pars):
@@ -31,7 +32,7 @@ class Model(object):
     def __call__(self,times, freqs):
         """ Just feed times and freqs directly to components? """
 
-        return self.func(times,freqs)
+        return self.function(times,freqs)
 
 
     def get_intensity_values(times, freqs):
@@ -75,25 +76,24 @@ class Model(object):
 
         pars = {"comp1": self.pars, "comp2": other.pars}
         model = Model(pars)
-        model.func = lambda times, freqs: self.func(times, freqs) + \
-                                          other.func(times, freqs)
+        model.function = lambda times, freqs: self.function(times, freqs) + \
+                                              other.function(times, freqs)
         return model
 
     def __mul__(self,other):
 
         pars = {"comp1": self.pars, "comp2": other.pars}
         model = Model(pars)
-        model.func = lambda times, freqs: self.func(times, freqs) * \
-                                          other.func(times, freqs)
+        model.function = lambda times, freqs: self.function(times, freqs) * \
+                                              other.function(times, freqs)
         return model
 
 class Component(Model):
     """
-    A model that is a function of either time or frequency. Not both.
+    A Model that is a function of either time or frequency. Not both.
     """
     def __init__(self,pars,dependant):
-
-        super(Component,self).__init(pars)
+        super(Component,self).__init__(pars)
         self.dependant = dependant
 
 class GaussComp(Component):
@@ -101,7 +101,7 @@ class GaussComp(Component):
     A Gaussian.
     """
     
-    def func(self,times,freqs):
+    def function(self,times,freqs):
 
         if self.dependant == "freq":
             x = freqs
@@ -109,6 +109,9 @@ class GaussComp(Component):
         elif self.dependant == "time":
             x = times
             y = freqs
+
+        x = np.atleast_1d(x)
+        y = np.atleast_1d(y)
 
         pars = self.pars
         gauss = scipy.stats.norm(pars["mean"],pars["width"])
@@ -128,34 +131,48 @@ class Transform(object):
         self.pars = pars
 
 
-class DeltaDM(Transform):
+    def __call__(self,model):
+        pars = {self.name: self.pars, "comp": model.pars}
+        new_model = Model(pars) 
+        new_model.func = lambda times, freqs: self.function(model,times,freqs)
+        return new_model
+
+
+class DeltaDMTransform(Transform):
+    """
+    Shift times in each frequency channel by a dispersion delay.
+    As the input is expected to be dedispersed to some DM already, this should
+    be a change in DM from that fiducial value.
+    """
+
+    def __init__(self,pars):
+        super(DeltaDMTransform,self).__init__(pars)
+        self.name = "deltadm"
     
-    def apply(self,old_func,times,freqs):
-        delay = DM/(0.000241*freqs*freqs)
-        new_func = old_func(times,freqs) # do something to old func
-        return new_func
+    def function(self,model,times,freqs):
+        freqs = np.atleast_1d(freqs)
+        times = np.atleast_1d(times)
+
+        dt = times[1] - times[0]
+        delays = self.pars["dm"]/(0.000241*freqs*freqs)
+
+        output = np.empty((len(freqs), len(times)))
+        for i,freq in enumerate(freqs):
+            output[i] = model(times-delays[i],freq)
+
+        return output
+
 
 class ScatterTransform(Transform):
     """
     Convolve an arbitrary model with an exponential scattering function
     """
 
-    def kernel(self,freqs,times):
-    
-       t0 = self.pars["t0"]
-       tau_0 = self.pars["tau0"]
-       f0 = self.pars["f0"]
+    def __init__(self,pars):
+        super(ScatterTransform,self).__init__(pars)
+        self.name = "scatter"
 
-       dt = times[1] - times[0]
-       t = np.arange(0,10*tau_0,dt) 
-       tau = tau_0 * (freqs / f0)**-4.
-       scatter = np.exp( -1.*(t)[:,np.newaxis]/tau )
-       scatter = np.append(np.zeros(scatter.shape),scatter,axis=0)
-       print scatter.shape
-
-       return scatter
-
-    def kernel1d(self,freq,times):
+    def _kernel(self,freq,times):
     
        t0 = self.pars["t0"]
        tau_0 = self.pars["tau0"]
@@ -169,39 +186,19 @@ class ScatterTransform(Transform):
 
        return scatter
 
-    def convolve(self,model):
-        """
-        Convolve the scattering function with the model.
-        """
-
-        pars = {"scatt": self.pars, "comp": model.pars}                                            
-        new_model = Model(pars)                                                                         
-        # convolution should be just in time with freq dependant tau, not 2d
-        new_model.func = lambda times, freqs: scipy.signal.convolve2d(model(times,freqs),
-                                                                  self.kernel(freqs,times).T,mode="same")
-        #new_model.func = lambda times, freqs: self.func(times,freqs).T
-
-        return new_model
-
-
-    def convolve_singlefreq(self,model,times,freq):
-        kernel = self.kernel1d(freq,times)
+    def _convolve_singlefreq(self,model,times,freq):
+        kernel = self._kernel(freq,times)
         at_freq = scipy.signal.fftconvolve(model(times,freq)[0], 
                                            kernel,mode="same") / np.sum(kernel)
 
         return at_freq
 
-    def convolve_multi_freq(self,model,times,freqs):
+    def function(self,model,times,freqs):
 
+        freqs = np.atleast_1d(freqs)
+        times = np.atleast_1d(times)
         output = np.empty((len(freqs), len(times)))
         for i,freq in enumerate(freqs):
-            output[i] = self.convolve_singlefreq(model,times,np.array([freq]))
+            output[i] = self._convolve_singlefreq(model,times,freq)
 
         return output
-
-    def __call__(self,model):
-        pars = {"scatt": self.pars, "comp": model.pars}
-        new_model = Model(pars) 
-        new_model.func = lambda times, freqs: self.convolve_multi_freq(model,times,freqs)
-        return new_model
-
