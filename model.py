@@ -3,6 +3,9 @@ import scipy.stats
 import scipy.signal
 import matplotlib.pyplot as plt
 
+class Parameter(object):
+    pass
+
 class Model(object):
     """
     A structure that provides the intensity as a function of time and frequency
@@ -35,7 +38,7 @@ class Model(object):
         return self.function(times,freqs)
 
 
-    def get_intensity_values(times, freqs):
+    def get_intensity_values(self,times, freqs):
         """
         For a set of parameters, return an array of intensity values for
         a given set of times and freqs.
@@ -54,7 +57,8 @@ class Model(object):
         * But, I don't like this: time and freq span and resolution are 
           properties of the data, not model.
         """
-        pass
+
+        return self(times,freqs)
 
     def plot(self, times, freqs, ax=None):
         """
@@ -66,9 +70,10 @@ class Model(object):
             ax_ts = plt.axes((0.15, 0.75, 0.6, 0.2),sharex=ax_im)
             ax_spec = plt.axes((0.75, 0.15, 0.2, 0.6),sharey=ax_im)
 
-        ax_im.pcolormesh(times,freqs,self(times,freqs),cmap="YlOrBr_r")
-        ax_ts.plot(times,self(times,freqs).sum(0),c="orangered")
-        ax_spec.plot(self(times,freqs).sum(1),freqs,c="orangered")
+        #ax_im.pcolormesh(times,freqs,self(times,freqs),cmap="YlOrBr_r")
+        ax_im.pcolormesh(times,freqs,self(times,freqs),cmap="plasma")
+        ax_ts.plot(times,self(times,freqs).sum(0),c="C1")
+        ax_spec.plot(self(times,freqs).sum(1),freqs,c="C1")
         ax_im.set_xlabel("Time")
         ax_im.set_ylabel("Frequency")
 
