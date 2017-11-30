@@ -4,17 +4,55 @@ import scipy.signal
 import matplotlib.pyplot as plt
 
 class Parameter(object):
-    pass
+    """
+    An object that describes a parameter in a model.
+
+    Parameters
+    ----------
+
+    name : str
+        Name of the parameter.
+
+    value : float
+        Value of the parameter.
+
+    """
+
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
+        self.fixed = True
+        self.free = (not self.fixed)
+        self.model = None
+        self.piece = None
+
+    def set_fixed(self,fixed=True):
+        self.fixed = fixed
+        self.free = (not fixed)
+
+    def set_free(self,free=True):
+        self.fixed = (not free)
+        self.free = free
+
+    def get_component(self):
+        return self.component
+
+    def __str__(self):
+        return "Parameter: " + str(self.name) + " Value: " + str(self.value) +\
+                " Component: " + repr(self.piece)
+
+    def __repr__(self):
+        return str(self.value)
 
 class Model(object):
     """
     A structure that provides the intensity as a function of time and frequency
     given a functional form defined by the model and a set of parameters for
     the model.
-    
+
     Parameters
     ----------
-    
+
     pars : dict
         A dictionary of all the free parameters of the model.
 
@@ -25,7 +63,7 @@ class Model(object):
     in one dimension.
 
     Models are modified by Transforms.
-    """ 
+    """
 
     def __init__(self,pars):
         # here the pars apply to different components, need to have a system
@@ -38,23 +76,23 @@ class Model(object):
         return self.function(times,freqs)
 
 
-    def get_intensity_values(self,times, freqs):
+    def get_intensity_values(self, times, freqs):
         """
         For a set of parameters, return an array of intensity values for
         a given set of times and freqs.
 
         Parameters
         ----------
-   
-        times 
+
+        times
 
 
         Notes
         -----
 
         Could have times and freqs set as attributes of the class instead
-        of fed to this function. 
-        * But, I don't like this: time and freq span and resolution are 
+        of fed to this function.
+        * But, I don't like this: time and freq span and resolution are
           properties of the data, not model.
         """
 
@@ -63,7 +101,7 @@ class Model(object):
     def plot(self, times, freqs, ax=None):
         """
         Plot the form of the model in time and frequency.
-        """ 
+        """
 
         if ax is None:
             ax_im = plt.axes((0.15, 0.15, 0.6, 0.6))
@@ -77,18 +115,37 @@ class Model(object):
         ax_im.set_xlabel("Time")
         ax_im.set_ylabel("Frequency")
 
+    @staticmethod
+    def new_composite_model(*args):
+
+        pieces = []
+        new_par_keys = []
+        new_par_values = []
+
+        for model in args:
+
+            pieces += model.pieces
+            new_par_keys += [ par.name + str(pieces.index(par.piece))
+                             for par in model.pars.values()]
+            new_par_values += model.pars.values()
+
+        new_model = Model(dict(zip(new_par_keys, new_par_values)))
+        new_model.pieces = pieces
+
+        return new_model
+
     def __add__(self,other):
 
-        pars = {"comp1": self.pars, "comp2": other.pars}
-        model = Model(pars)
+        model = Model.new_composite_model(self,other)
+
         model.function = lambda times, freqs: self.function(times, freqs) + \
                                               other.function(times, freqs)
         return model
 
     def __mul__(self,other):
 
-        pars = {"comp1": self.pars, "comp2": other.pars}
-        model = Model(pars)
+        model = Model.new_composite_model(self,other)
+
         model.function = lambda times, freqs: self.function(times, freqs) * \
                                               other.function(times, freqs)
         return model
@@ -97,15 +154,39 @@ class Component(Model):
     """
     A Model that is a function of either time or frequency. Not both.
     """
-    def __init__(self,pars,dependant):
+
+    _par_names = []
+    _par_dummy_vals = []
+
+    def __init__(self, pars, dependant):
         super(Component,self).__init__(pars)
         self.dependant = dependant
+
+        for par in pars.values():
+            par.piece = self
+
+        self.pieces = [self]
+
+        self.name = self._short_name + " " + self.dependant
+
+    @classmethod
+    def get_blank_params(cls):
+
+        pars = []
+        for name, val in zip(cls._par_names, cls._par_dummy_vals):
+            pars.append(Parameter(name,val))
+
+        return dict(zip(cls._par_names, pars))
 
 class GaussComp(Component):
     """
     A Gaussian.
     """
-    
+
+    _par_names = ["norm","mean","width"]
+    _par_dummy_vals = [1.0,1.0,1.0]
+    _short_name = "gauss"
+
     def function(self,times,freqs):
 
         if self.dependant == "freq":
@@ -119,9 +200,9 @@ class GaussComp(Component):
         y = np.atleast_1d(y)
 
         pars = self.pars
-        gauss = scipy.stats.norm(pars["mean"],pars["width"])
+        gauss = scipy.stats.norm(pars["mean"].value,pars["width"].value)
 
-        x_and_y = np.tile(pars["norm"]*gauss.pdf(x),len(y))
+        x_and_y = np.tile(pars["norm"].value*gauss.pdf(x),len(y))
         x_and_y.shape = (len(y),len(x))
 
         if self.dependant == "freq":
@@ -138,9 +219,18 @@ class Transform(object):
 
     def __call__(self,model):
         pars = {self.name: self.pars, "comp": model.pars}
-        new_model = Model(pars) 
+        new_model = Model(pars)
         new_model.function = lambda times, freqs: self.function(model,times,freqs)
         return new_model
+
+    @classmethod
+    def get_blank_params(cls):
+
+        pars = []
+        for name, val in zip(cls._par_names, cls._par_dummy_vals):
+            pars.append(Parameter(name,val))
+
+        return dict(zip(cls._par_names, pars))
 
 
 class DeltaDMTransform(Transform):
@@ -150,16 +240,19 @@ class DeltaDMTransform(Transform):
     be a change in DM from that fiducial value.
     """
 
+    _par_names = ["dm"]
+    _par_dummy_vals = [1.0]
+
     def __init__(self,pars):
         super(DeltaDMTransform,self).__init__(pars)
         self.name = "deltadm"
-    
+
     def function(self,model,times,freqs):
         freqs = np.atleast_1d(freqs)
         times = np.atleast_1d(times)
 
         dt = times[1] - times[0]
-        delays = self.pars["dm"]/(0.000241*freqs*freqs)
+        delays = self.pars["dm"].value/(0.000241*freqs*freqs)
 
         output = np.empty((len(freqs), len(times)))
         for i,freq in enumerate(freqs):
@@ -173,17 +266,20 @@ class ScatterTransform(Transform):
     Convolve an arbitrary model with an exponential scattering function
     """
 
+    _par_names = ["tau0","f0"]
+    _par_dummy_vals = [1.0,1.0]
+
     def __init__(self,pars):
         super(ScatterTransform,self).__init__(pars)
         self.name = "scatter"
 
     def _kernel(self,freq,times):
-    
-       tau_0 = self.pars["tau0"]
-       f0 = self.pars["f0"]
+
+       tau_0 = self.pars["tau0"].value
+       f0 = self.pars["f0"].value
 
        dt = times[1] - times[0]
-       t = np.arange(0,100*tau_0,dt) # how long to make kernel? 
+       t = np.arange(0,100*tau_0,dt) # how long to make kernel?
        tau = tau_0 * (freq / f0)**-4.
        scatter = np.exp( -1.*(t)/tau )
        scatter = np.append(np.zeros(scatter.shape),scatter,axis=0)
