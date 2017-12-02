@@ -210,6 +210,44 @@ class GaussComp(Component):
 
         return x_and_y
 
+class PowerLawComp(Component):
+    """
+    A Power Law.
+
+    Notes
+    -----
+
+    * Do Tiling etc in `Component` instead of each subclass?
+    """
+
+    _par_names = ["norm","index"]
+    _par_dummy_vals = [1.0,0.0]
+    _short_name = "powlaw"
+
+    def function(self,times,freqs):
+
+        if self.dependant == "freq":
+            x = freqs
+            y = times
+        elif self.dependant == "time":
+            x = times
+            y = freqs
+
+        x = np.atleast_1d(x)
+        y = np.atleast_1d(y)
+
+        pars = self.pars
+
+        powlaw = pars['norm'].value*(x/x[0])**pars["index"].value
+
+        x_and_y = np.tile(powlaw,len(y))
+        x_and_y.shape = (len(y),len(x))
+
+        if self.dependant == "freq":
+            x_and_y = x_and_y.T
+
+        return x_and_y
+
 class Transform(object):
     """ A Transform modifies a Model in some way.
     """
