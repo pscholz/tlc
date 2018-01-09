@@ -125,8 +125,9 @@ class Model(object):
         for model in args:
 
             pieces += model.pieces
-            new_par_keys += [ par.name + str(pieces.index(par.piece))
-                             for par in model.pars.values()]
+            for par in model.pars.values():
+                par.name = par.name + str(pieces.index(par.piece))
+                new_par_keys += [par.name]
             new_par_values += model.pars.values()
 
         new_model = Model(dict(zip(new_par_keys, new_par_values)))
