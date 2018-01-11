@@ -98,6 +98,20 @@ class Model(object):
 
         return self(times,freqs)
 
+    def set_pars(self,value_array):
+        """
+        Given an array of parameter values, set parameters for the model.
+
+        Note: this requires knowledge of how parameters are ordered in dict...
+              i.e. iffy...
+        """
+        i = 0
+        for par in self.pars.values():
+
+            if par.free:
+                par.value = value_array[i]
+                i += 1
+
     def plot(self, times, freqs, ax=None):
         """
         Plot the form of the model in time and frequency.
@@ -170,6 +184,30 @@ class Component(Model):
 
         self.name = self._short_name + " " + self.dependant
 
+    def function(self,times,freqs):
+        """
+        Take the 1D function for the component and tile it so that it is
+        a function of both time and freq.
+        """
+
+        if self.dependant == "freq":
+            x = freqs
+            y = times
+        elif self.dependant == "time":
+            x = times
+            y = freqs
+
+        x = np.atleast_1d(x)
+        y = np.atleast_1d(y)
+
+        x_and_y = np.tile(self.function_1d(x),len(y))
+        x_and_y.shape = (len(y),len(x))
+
+        if self.dependant == "freq":
+            x_and_y = x_and_y.T
+
+        return x_and_y
+
     @classmethod
     def get_blank_params(cls):
 
@@ -188,66 +226,28 @@ class GaussComp(Component):
     _par_dummy_vals = [1.0,1.0,1.0]
     _short_name = "gauss"
 
-    def function(self,times,freqs):
-
-        if self.dependant == "freq":
-            x = freqs
-            y = times
-        elif self.dependant == "time":
-            x = times
-            y = freqs
-
-        x = np.atleast_1d(x)
-        y = np.atleast_1d(y)
+    def function_1d(self,x):
 
         pars = self.pars
         gauss = scipy.stats.norm(pars["mean"].value,pars["width"].value)
 
-        x_and_y = np.tile(pars["norm"].value*gauss.pdf(x),len(y))
-        x_and_y.shape = (len(y),len(x))
-
-        if self.dependant == "freq":
-            x_and_y = x_and_y.T
-
-        return x_and_y
+        return pars["norm"].value*gauss.pdf(x)
 
 class PowerLawComp(Component):
     """
     A Power Law.
 
-    Notes
-    -----
-
-    * Do Tiling etc in `Component` instead of each subclass?
     """
 
     _par_names = ["norm","index"]
     _par_dummy_vals = [1.0,0.0]
     _short_name = "powlaw"
 
-    def function(self,times,freqs):
-
-        if self.dependant == "freq":
-            x = freqs
-            y = times
-        elif self.dependant == "time":
-            x = times
-            y = freqs
-
-        x = np.atleast_1d(x)
-        y = np.atleast_1d(y)
+    def function_1d(self,x):
 
         pars = self.pars
 
-        powlaw = pars['norm'].value*(x/x[0])**pars["index"].value
-
-        x_and_y = np.tile(powlaw,len(y))
-        x_and_y.shape = (len(y),len(x))
-
-        if self.dependant == "freq":
-            x_and_y = x_and_y.T
-
-        return x_and_y
+        return pars['norm'].value*(x/x[0])**pars["index"].value
 
 class Transform(object):
     """ A Transform modifies a Model in some way.
