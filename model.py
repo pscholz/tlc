@@ -104,9 +104,13 @@ class Model(object):
     Models are modified by Transforms.
     """
 
-    def __init__(self,pars):
+    def __init__(self,pars=None):
         # here the pars apply to different components, need to have a system
         # of bookkeeping thats clear. (Maybe dict not best structure)
+
+        if pars is None:
+            pars = self.get_blank_params()
+
         self.pars = pars
 
     def __call__(self,times, freqs):
@@ -221,11 +225,11 @@ class Component(Model):
     _par_names = []
     _par_dummy_vals = []
 
-    def __init__(self, pars, dependant):
+    def __init__(self, pars=None, dependant="time"):
         super(Component,self).__init__(pars)
         self.dependant = dependant
 
-        for par in pars:
+        for par in self.pars:
             par.piece = self
 
         self.pieces = [self]
