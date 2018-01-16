@@ -42,7 +42,46 @@ class Parameter(object):
                 " Component: " + repr(self.piece)
 
     def __repr__(self):
-        return str(self.value)
+        return str(self.name) + ": " + str(self.value)
+
+class ParList(object):
+
+    def __init__(self,names,pars):
+        self._names = list(names)
+        self._pars = list(pars)
+
+    def __setitem__(self,item,value):
+        if type(item) is str:
+            self._pars[self._names.index(item)].value = value
+        elif type(item) is int:
+            self._pars[item].value = value
+        else:
+            raise KeyError("%s of type %s is not a valid index" % (item,repr(type(item))))
+
+    def __getitem__(self,item):
+        if type(item) is str:
+
+            return self._pars[self._names.index(item)]
+        elif type(item) is int:
+            return self._pars[item]
+
+        else:
+            raise KeyError("%s of type %s is not a valid index" % (item,repr(type(item))))
+
+    def __iter__(self):
+        return iter(self._pars)
+
+    def __repr__(self):
+        return repr(self._pars)
+
+    @property
+    def names(self):
+        return self._names
+
+    @property
+    def pars(self):
+        return self._pars
+
 
 class Model(object):
     """
@@ -53,8 +92,8 @@ class Model(object):
     Parameters
     ----------
 
-    pars : dict
-        A dictionary of all the free parameters of the model.
+    pars : ParList
+        A ParList object of all the parameters of the model.
 
     Notes
     -----
@@ -84,8 +123,17 @@ class Model(object):
         Parameters
         ----------
 
-        times
+        times : ndarray
+            Array of times for which to calculate intensity values.
 
+        freqs : ndarray
+            Array of frequencies for which to calculate intensity values.
+
+        Returns
+        -------
+
+        ndarray
+            2D array of intensity values (in S/N).
 
         Notes
         -----
@@ -106,7 +154,7 @@ class Model(object):
               i.e. iffy...
         """
         i = 0
-        for par in self.pars.values():
+        for par in self.pars:
 
             if par.free:
                 par.value = value_array[i]
@@ -134,17 +182,17 @@ class Model(object):
 
         pieces = []
         new_par_keys = []
-        new_par_values = []
+        new_par_objs = []
 
         for model in args:
 
             pieces += model.pieces
-            for par in model.pars.values():
+            for par in model.pars:
                 par.name = par.name + str(pieces.index(par.piece))
                 new_par_keys += [par.name]
-            new_par_values += model.pars.values()
+            new_par_objs += model.pars
 
-        new_model = Model(dict(zip(new_par_keys, new_par_values)))
+        new_model = Model(ParList(new_par_keys, new_par_objs))
         new_model.pieces = pieces
 
         return new_model
@@ -177,7 +225,7 @@ class Component(Model):
         super(Component,self).__init__(pars)
         self.dependant = dependant
 
-        for par in pars.values():
+        for par in pars:
             par.piece = self
 
         self.pieces = [self]
@@ -211,11 +259,11 @@ class Component(Model):
     @classmethod
     def get_blank_params(cls):
 
-        pars = []
+        par_objs = []
         for name, val in zip(cls._par_names, cls._par_dummy_vals):
-            pars.append(Parameter(name,val))
+            par_objs.append(Parameter(name,val))
 
-        return dict(zip(cls._par_names, pars))
+        return ParList(cls._par_names, par_objs)
 
 class GaussComp(Component):
     """
