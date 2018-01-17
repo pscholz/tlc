@@ -1,3 +1,7 @@
+"""
+Provides a framework for defining 1D and 2D models to fit dynamic spectra.
+"""
+
 import numpy as np
 import scipy.stats
 import scipy.signal
@@ -45,6 +49,19 @@ class Parameter(object):
         return str(self.name) + ": " + str(self.value)
 
 class ParList(object):
+    """
+    A list of Parameter objects.
+
+    Parameters
+    ----------
+
+    names : list
+        List of names for each parameter in `pars`.
+
+    pars : list
+        List of Parameter objects.
+
+    """
 
     def __init__(self,names,pars):
         self._names = list(names)
@@ -183,6 +200,36 @@ class Model(object):
 
     @staticmethod
     def new_composite_model(*args):
+        """
+        Create a new ParList object for that consists of the parameters from
+        each Model in `args`. Initiate a new Model with that ParList.
+
+        Parameters
+        ----------
+
+        *args : Model
+            Each argument should be a Model object that will make up the total
+            model.
+
+        Returns
+        -------
+
+        model : Model
+            The newly initiated Model created from the merged ParList.
+
+        Notes
+        -----
+
+        Parameter names are appended with an index for each "piece" of the
+        model (a piece is a model Component or Transform). So, for example,
+        in a model that is a 2D Gaussian, the parameters become `mean0`,
+        `width0`, `norm0`, `mean1`, `width1`, `norm1`.
+
+        This method does _not_ attach a `function` to the model, so does not
+        define how the model pieces are related. That has to be done
+        separately.
+
+        """
 
         pieces = []
         new_par_keys = []
@@ -219,7 +266,20 @@ class Model(object):
 
 class Component(Model):
     """
-    A Model that is a function of either time or frequency. Not both.
+    A Model that is a function of either time or frequency.
+
+    Optional Parameters
+    -------------------
+
+    pars : ParList
+        A ParList object that contains the parameters for the model.
+        Default is `None` which will use `get_blank_params` to create a
+        new ParList with default values for the parameters.
+
+    dependant : string
+        The dependant coorinate for the component. Either "time" or "freq".
+        Default is "time".
+
     """
 
     _par_names = []
@@ -240,6 +300,16 @@ class Component(Model):
         """
         Take the 1D function for the component and tile it so that it is
         a function of both time and freq.
+
+        Parameter
+        ---------
+
+        times : array_like
+            Array of times to calculate intensity signal for.
+
+        freqs : array_like
+            Array of frequencies to calculate intensity signal for.
+
         """
 
         if self.dependant == "freq":
@@ -260,8 +330,40 @@ class Component(Model):
 
         return x_and_y
 
+    def function_1d(self,x):
+        """
+        Given an array of dependant coordinates (times _or_ frequencies)
+        return the value of the model for those coordinates.
+
+        Parameters
+        ----------
+
+        x : array_like
+            Array of dependant coordinate for the Component. Either times or
+            frequencies.
+
+        Returns
+        -------
+
+        ndarray
+            Array of model intensities.
+
+        """
+        raise ImplementationError("function_1d needs to be implemented in 
+                                  subclass.")
+
     @classmethod
     def get_blank_params(cls):
+        """
+        Initiate a ParList object with default values for the model.
+
+        Returns
+        -------
+
+        ParList
+            A list of Parameters set to their default values.
+
+        """
 
         par_objs = []
         for name, val in zip(cls._par_names, cls._par_dummy_vals):
@@ -271,7 +373,7 @@ class Component(Model):
 
 class GaussComp(Component):
     """
-    A Gaussian.
+    A Gaussian model component.
     """
 
     _par_names = ["norm","mean","width"]
@@ -287,7 +389,7 @@ class GaussComp(Component):
 
 class PowerLawComp(Component):
     """
-    A Power Law.
+    A Power Law model component.
 
     """
 
