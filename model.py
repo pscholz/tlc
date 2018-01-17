@@ -349,8 +349,8 @@ class Component(Model):
             Array of model intensities.
 
         """
-        raise ImplementationError("function_1d needs to be implemented in 
-                                  subclass.")
+        raise ImplementationError("function_1d needs to be implemented in "\
+                                  "subclass.")
 
     @classmethod
     def get_blank_params(cls):
@@ -409,11 +409,17 @@ class Transform(object):
     def __init__(self,pars):
         self.pars = pars
 
+        for par in self.pars:
+            par.piece = self
+
+        self.pieces = [self]
 
     def __call__(self,model):
-        pars = {self.name: self.pars, "comp": model.pars}
-        new_model = Model(pars)
+
+        new_model = Model.new_composite_model(self,model)
+
         new_model.function = lambda times, freqs: self.function(model,times,freqs)
+
         return new_model
 
     @classmethod
